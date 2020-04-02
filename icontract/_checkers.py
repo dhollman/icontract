@@ -410,8 +410,10 @@ def _find_self(param_names: List[str], args: Tuple[Any, ...], kwargs: Dict[str, 
 
 def _assert_all_invariants_if_not_already_checking(instance: Any) -> None:
     """
-    Assert the invariants of an instance if that instance is not inside of another invariant check, which can
-    lead to infinite recursion.
+    Assert the invariants of an instance if that instance is not inside of another invariant check.
+
+    If we didn't check and set `__already_checking_invariants__`, any invariant that uses a member function or property
+    would recurse infinitely.
 
     :param instance: the instance to check invariants of.
     """
@@ -447,7 +449,7 @@ def _decorate_with_invariants(func: CallableT, is_init: bool) -> CallableT:
             result = func(*args, **kwargs)
             instance = _find_self(param_names=param_names, args=args, kwargs=kwargs)
 
-            # TODO this needs to assert only the invariants associated with this level of the hierarchy, not all
+            # !!!  This needs to assert only the invariants associated with this level of the hierarchy, not all
             #      of them.  Furthermore, if this is the initializer of an abstract class, none of the invariants
             #      should be asserted, since they could invoke abstract methods that are implemented by a derived
             #      class and use members initialized by that derived class's initializer.
