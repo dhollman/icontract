@@ -557,7 +557,11 @@ def add_invariant_checks(cls: type) -> None:
         else:
             raise NotImplementedError("Unhandled directory entry of class {} for {}: {}".format(cls, name, value))
 
-    if init_name_func:
+    # We only want to assert the invariants after initialization if `cls` is *not* abstract, since invariants of an
+    # abstract base class could invoke abstract methods that are implemented by a derived class and use members
+    # initialized by that derived class's initializer, which may not have finished executing when the base class's
+    # initializer is called.
+    if init_name_func and not inspect.isabstract(cls):
         name, func = init_name_func
         wrapper = _decorate_with_invariants(func=func, is_init=True)
         setattr(cls, name, wrapper)
