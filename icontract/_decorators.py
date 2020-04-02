@@ -352,6 +352,8 @@ class invariant:  # pylint: disable=invalid-name
             assert isinstance(invariants, list), \
                 "Expected invariants of class {} to be a list, but got: {}".format(cls, type(invariants))
 
+        setattr(cls, "__already_checking_invariants__", False)
+
         invariants.append(self._contract)
 
         icontract._checkers.add_invariant_checks(cls=cls)

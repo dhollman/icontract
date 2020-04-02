@@ -408,6 +408,22 @@ def _find_self(param_names: List[str], args: Tuple[Any, ...], kwargs: Dict[str, 
     return instance
 
 
+def _assert_all_invariants_if_not_already_checking(instance: Any) -> None:
+    """
+    Assert the invariants of an instance if that instance is not inside of another invariant check, which can
+    lead to infinite recursion.
+
+    :param instance: the instance to check invariants of.
+    """
+    if not instance.__already_checking_invariants__:
+        instance.__already_checking_invariants__ = True
+        try:
+            for contract in instance.__class__.__invariants__:
+                _assert_invariant(contract=contract, instance=instance)
+        finally:
+            instance.__already_checking_invariants__ = False
+
+
 def _decorate_with_invariants(func: CallableT, is_init: bool) -> CallableT:
     """
     Decorate the function ``func`` of the class ``cls`` with invariant checks.
@@ -431,8 +447,11 @@ def _decorate_with_invariants(func: CallableT, is_init: bool) -> CallableT:
             result = func(*args, **kwargs)
             instance = _find_self(param_names=param_names, args=args, kwargs=kwargs)
 
-            for contract in instance.__class__.__invariants__:
-                _assert_invariant(contract=contract, instance=instance)
+            # TODO this needs to assert only the invariants associated with this level of the hierarchy, not all
+            #      of them.  Furthermore, if this is the initializer of an abstract class, none of the invariants
+            #      should be asserted, since they could invoke abstract methods that are implemented by a derived
+            #      class and use members initialized by that derived class's initializer.
+            _assert_all_invariants_if_not_already_checking(instance=instance)
 
             return result
     else:
@@ -441,13 +460,11 @@ def _decorate_with_invariants(func: CallableT, is_init: bool) -> CallableT:
             """Wrap a function of a class by checking the invariants *before* and *after* the invocation."""
             instance = _find_self(param_names=param_names, args=args, kwargs=kwargs)
 
-            for contract in instance.__class__.__invariants__:
-                _assert_invariant(contract=contract, instance=instance)
+            _assert_all_invariants_if_not_already_checking(instance=instance)
 
             result = func(*args, **kwargs)
 
-            for contract in instance.__class__.__invariants__:
-                _assert_invariant(contract=contract, instance=instance)
+            _assert_all_invariants_if_not_already_checking(instance=instance)
 
             return result
 
