@@ -487,14 +487,15 @@ def add_invariant_checks(cls: type) -> None:
     for name, value in [(name, getattr(cls, name)) for name in dir(cls)]:
         # We need to ignore __repr__ to prevent endless loops when generating error messages.
         # __getattribute__, __setattr__ and __delattr__ are too invasive and alter the state of the instance.
-        # Hence we don't consider them "public".  Python considers some dunder methods to be class methods implicitly,
-        # like __new__ and __init_subclass__.  While it's difficult to enumerate all of them here (and, indeed, custom
-        # metaclasses that inherit from DBCMeta can add such functions in their __new__, for instance), we can exclude
-        # most of the ones we know about so that we don't have to rely on the user to
-        if name in [
-                "__repr__", "__getattribute__", "__setattr__", "__delattr__", "__new__", "__init_subclass__",
-                "__class_getitem__"
-        ]:
+        # Hence we don't consider them "public".
+        if name in ["__repr__", "__getattribute__", "__setattr__", "__delattr__"]:
+            continue
+
+        # Python considers some dunder methods to be class methods implicitly, like __new__ and __init_subclass__.
+        # While it's difficult to enumerate all of them here (and, indeed, custom metaclasses that inherit from
+        # DBCMeta can add such functions in their __new__, for instance), we can exclude most of the ones we know about
+        # so that we don't have to rely on the user to correctly give `cls` as the first parameter name.
+        if name in ["__new__", "__init_subclass__", "__class_getitem__"]:
             continue
 
         if name == "__init__":
@@ -517,6 +518,18 @@ def add_invariant_checks(cls: type) -> None:
             continue
 
         if inspect.isfunction(value) or isinstance(value, _SLOT_WRAPPER_TYPE):
+            # Ignore methods that have `cls` as the first parameter; these could implicitly be class methods,
+            # like __init_subclass__ or __class_getitem__, and particularly could be ones that get added to Python
+            # in the future that we don't know about yet.  Most of the ones we know about are listed above, but it's
+            # generally impossible for that list to be exhaustive, so we rely on convention here and hope the user
+            # does the right thing with naming parameters of implicit class methods.
+            try:
+                sign = inspect.signature(value)
+                param_names = list(sign.parameters.keys())
+                if param_names.index("cls") == 0:
+                    continue
+            except ValueError:
+                pass
             names_funcs.append((name, value))
 
         elif isinstance(value, property):
