@@ -476,6 +476,44 @@ def _already_decorated_with_invariants(func: CallableT) -> bool:
     return already_decorated
 
 
+def _should_treat_as_class_method(cls: type, name: str, value: Any) -> bool:
+    """
+    Check if a member of a class is a (potentially implicit) class method.
+
+    :param cls: The class that `value` is a member of.
+    :param name: The member name
+    :param value: The value of the member
+    :return: True if `value` should be considered a class method for the purposes of invariant checking.
+    """
+    # Python considers some dunder methods to be class methods implicitly, like __new__ and __init_subclass__.  While
+    # it's difficult to enumerate all of them here (and, indeed, custom metaclasses that inherit from DBCMeta can add
+    # such functions in their __new__, for instance), we can exclude most of the ones we know about so that we don't
+    # have to rely on the user to name the first parameter `cls` in in these cases.
+    if name in ["__new__", "__init_subclass__", "__class_getitem__"]:
+        return True
+
+    # Anything decorated with @classmethod will have an __self__ member that is `cls`
+    if getattr(value, "__self__", None) is cls:
+        return True
+
+    # Otherwise, try to look at the parameters and see if `cls` is the first parameter; these could implicitly be class
+    # methods, like __init_subclass__ or __class_getitem__, and particularly could be ones that get added to Python
+    # in the future that we don't know about yet.  Most of the ones we know about are listed above, but it's generally
+    # impossible for that list to be exhaustive, so we rely on convention here and hope the user does the right thing
+    # with naming parameters of implicit class methods.
+    if inspect.isfunction(value) or isinstance(value, _SLOT_WRAPPER_TYPE):
+        try:
+            sign = inspect.signature(value)
+            param_names = list(sign.parameters.keys())
+            if param_names.index("cls") == 0:
+                return True
+        except ValueError:
+            pass
+
+    # Otherwise, it doesn't match any class method (implicit or explicit) that we know about.
+    return False
+
+
 def add_invariant_checks(cls: type) -> None:
     """Decorate each of the class functions with invariant checks if not already decorated."""
     # Candidates for the decoration as list of (name, dir() value)
@@ -491,13 +529,6 @@ def add_invariant_checks(cls: type) -> None:
         if name in ["__repr__", "__getattribute__", "__setattr__", "__delattr__"]:
             continue
 
-        # Python considers some dunder methods to be class methods implicitly, like __new__ and __init_subclass__.
-        # While it's difficult to enumerate all of them here (and, indeed, custom metaclasses that inherit from
-        # DBCMeta can add such functions in their __new__, for instance), we can exclude most of the ones we know about
-        # so that we don't have to rely on the user to correctly give `cls` as the first parameter name.
-        if name in ["__new__", "__init_subclass__", "__class_getitem__"]:
-            continue
-
         if name == "__init__":
             assert inspect.isfunction(value) or isinstance(value, _SLOT_WRAPPER_TYPE), \
                 "Expected __init__ to be either a function or a slot wrapper, but got: {}".format(type(value))
@@ -510,7 +541,7 @@ def add_invariant_checks(cls: type) -> None:
             continue
 
         # Ignore class methods
-        if getattr(value, "__self__", None) is cls:
+        if _should_treat_as_class_method(cls, name, value):
             continue
 
         # Ignore "protected"/"private" methods
@@ -518,18 +549,6 @@ def add_invariant_checks(cls: type) -> None:
             continue
 
         if inspect.isfunction(value) or isinstance(value, _SLOT_WRAPPER_TYPE):
-            # Ignore methods that have `cls` as the first parameter; these could implicitly be class methods,
-            # like __init_subclass__ or __class_getitem__, and particularly could be ones that get added to Python
-            # in the future that we don't know about yet.  Most of the ones we know about are listed above, but it's
-            # generally impossible for that list to be exhaustive, so we rely on convention here and hope the user
-            # does the right thing with naming parameters of implicit class methods.
-            try:
-                sign = inspect.signature(value)
-                param_names = list(sign.parameters.keys())
-                if param_names.index("cls") == 0:
-                    continue
-            except ValueError:
-                pass
             names_funcs.append((name, value))
 
         elif isinstance(value, property):
