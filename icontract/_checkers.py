@@ -487,8 +487,14 @@ def add_invariant_checks(cls: type) -> None:
     for name, value in [(name, getattr(cls, name)) for name in dir(cls)]:
         # We need to ignore __repr__ to prevent endless loops when generating error messages.
         # __getattribute__, __setattr__ and __delattr__ are too invasive and alter the state of the instance.
-        # Hence we don't consider them "public".
-        if name in ["__repr__", "__getattribute__", "__setattr__", "__delattr__"]:
+        # Hence we don't consider them "public".  Python considers some dunder methods to be class methods implicitly,
+        # like __new__ and __init_subclass__.  While it's difficult to enumerate all of them here (and, indeed, custom
+        # metaclasses that inherit from DBCMeta can add such functions in their __new__, for instance), we can exclude
+        # most of the ones we know about so that we don't have to rely on the user to
+        if name in [
+                "__repr__", "__getattribute__", "__setattr__", "__delattr__", "__new__", "__init_subclass__",
+                "__class_getitem__"
+        ]:
             continue
 
         if name == "__init__":
