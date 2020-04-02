@@ -449,10 +449,6 @@ def _decorate_with_invariants(func: CallableT, is_init: bool) -> CallableT:
             result = func(*args, **kwargs)
             instance = _find_self(param_names=param_names, args=args, kwargs=kwargs)
 
-            # !!!  This needs to assert only the invariants associated with this level of the hierarchy, not all
-            #      of them.  Furthermore, if this is the initializer of an abstract class, none of the invariants
-            #      should be asserted, since they could invoke abstract methods that are implemented by a derived
-            #      class and use members initialized by that derived class's initializer.
             _assert_all_invariants_if_not_already_checking(instance=instance)
 
             return result
